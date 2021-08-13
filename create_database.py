@@ -54,7 +54,8 @@ def db_creation(db_file, overwrite=False):
                     [photo_night] REAL, 
                     [sky_bright] REAL, 
                     [position] INTEGER, 
-                    [filter_name] TEXT)''')
+                    [filter_name] TEXT, 
+                    PRIMARY KEY ([datetime_obs], [position], [filter_name]))''')
         conn.commit()
 
     return 0
@@ -113,12 +114,12 @@ def proc_file(file_path):
             'position', 'filter', 'datetime']
             siendo este último la combinación de los dos primeros.
 
-            Devuelve None si la ruta al fichero de datos no es correcta.
+            Devuelve None si el patrón del nombre del fichero no es correcto.
     """
     # file_path example pattern: abr2020pos2_V.dat
     values = re.findall(r'/(\w{3})(\d{4})pos(\d{1})_(\w{1}).dat', file_path)
     if not len(values):
-        print(f"WARNING: Non valid file data '{file_path}'")
+        print(f"WARNING: Non valid file data name pattern ('{file_path}')")
         return None
     # Fixed field with format file
     data = pd.read_fwf(file_path, header=None, \
@@ -166,15 +167,27 @@ def data2db(data, db_file):
     """
     values = []
     for index, row in data.iterrows():
+        # checking if data was previously inserted
+        sql_check = "SELECT count(*) FROM measurement WHERE "
+        sql_check += f"datetime_obs = strftime ('%s', '{row['datetime']}') AND position = {row['position']} AND filter_name = '{row['filter']}';"
+        c.execute(sql_check)
+        rows = c.fetchall()
+        if rows[0][0] > 0: # previously inserted => do nothing
+            continue
+
+        print(f"sql_check = '{sql_check}'")
+
+        # new value for inserting in database
         str_val = f"(strftime ('%s', '{row['datetime']}'), {row['is_moon']}, {row['photo_night']}, {row['sky_bright']}, {row['position']}, '{row['filter']}')"
         values.append(str_val)
         # if index ==  2: # for testing purposes
         #     break
-    sql = f"{sql} {','.join(values)};" 
-    # print(sql) # Testing
-    c.execute(sql)
-    c.execute('COMMIT;')
-    # conn.commit()
+    if len(values) > 0:
+        sql = f"{sql} {','.join(values)};" 
+        # print(sql) # Testing
+        c.execute(sql)
+        c.execute('COMMIT;')
+        # conn.commit()
 
     return 0
 
