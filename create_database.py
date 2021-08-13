@@ -19,7 +19,19 @@ import matplotlib.dates as mdates
 import sqlite3
 
 def db_creation(db_file, overwrite=False):
-    """"""
+    """Crea la base de datos SQLite en la ruta dada por 'db_file'.
+    La base de datos puede generarse de nuevo si el parámetro 
+    'overwrite' es True.
+    
+    Args:
+        db_file (str): ruta al fichero que contendrá la base de
+            datos SQLite.
+        overwrite (bool): si es True, se borra y se genera de 
+            nuevo la base de datos con la tabla 'measurement'.
+    
+    Returns: 
+        (int): 0, si la creación de la base de datos fue exitosa.
+    """
     create = False
 
     if os.path.exists(db_file): # database exists
@@ -48,7 +60,24 @@ def db_creation(db_file, overwrite=False):
     return 0
 
 def fix_file(file_path):
-    """"""
+    """Procesa el fichero de entrada 'file_path'.
+    
+    Si hay líneas que no verifican el patrón esperado
+        01/05/2020 03:02:05      0      0.819527      20.402396
+    se ignoran. En ese caso se genera un fichero con las líneas
+    válidas y el orginal se copia un fichero con el mismo
+    nombre que el original pero con sufijo '.ori'.
+    
+    Args:
+        file_path (str): Ruta al fichero de datos.
+        
+    Returns:
+        (int): 0, si el procesado se realizó con éxito.
+               1, si la ruta al fichero de datos no es correcta.
+    """
+    if not os.path.isfile(file_path):
+        return 1
+
     lines = [l for l in open(file_path).read().split('\n') if len(l) > 0]
     good_lines = []
     bad_lines = False
@@ -70,7 +99,22 @@ def fix_file(file_path):
     return 0
 
 def proc_file(file_path):
-    """"""
+    """Lee el fichero "file_path" y procesa sólo las líneas que
+    verfican el patrón de campos válido. Agrega al pandas.dataframe
+    de salida los campos "position" y "filter", necesarios para
+    el análisis de la información.
+    
+    Args:
+        file_path (str): ruta al fichero de datos.
+        
+    Returns:
+        (pandas.dataframe): con los campos 
+            ['date', 'time', 'is_moon', 'photo_night', 'sky_bright',
+            'position', 'filter', 'datetime']
+            siendo este último la combinación de los dos primeros.
+
+            Devuelve None si la ruta al fichero de datos no es correcta.
+    """
     # file_path example pattern: abr2020pos2_V.dat
     values = re.findall(r'/(\w{3})(\d{4})pos(\d{1})_(\w{1}).dat', file_path)
     if not len(values):
@@ -101,7 +145,16 @@ def proc_file(file_path):
     return data
 
 def data2db(data, db_file):
-    """"""
+    """
+    Inserta el contenido "data" en la base de datos SQLite "db_file".
+    
+    Args:
+        data (pandas.dataframe): dataframe con información a insertar.
+        db_file (str): ruta al fichero SQLite que contiene la base de datos.
+    
+    Return:
+        (int): 0 si la operación resultó exitosa.
+    """
     conn = sqlite3.connect(db_file)
     c = conn.cursor()
 
