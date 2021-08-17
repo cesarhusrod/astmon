@@ -5,6 +5,7 @@
 import argparse
 import os
 import copy
+import calendar
 
 import seaborn as sns
 import pandas as pd
@@ -50,40 +51,110 @@ def classify(data):
         cat.append(value)
     return np.array(cat)
 
-def time_intervals(period, years, months, days):
-    """Get time interval for data to plot."""
+def time_intervals(period=None, years=None, months=None, days=None):
+    """Get time interval for data to plot.
+    
+    Args:
+        period (list): [(date_ini, date_final),...] list of tuple format.
+            dates are given by "YYYY-MM-DD hh:mm:ss" string pattern.
+        years (list): integer values.
+        months (list): integer values in [1, 12].
+        days (list): integer values in [1, 31].
+
+        If period is given, all other parameters are ignored.
+    
+    Return:
+        (list): of tuples. Format given by [(data_ini, date_final),...]
+        
+    """
     dts = []
+    dts_ini = []
+    dts_final = []
+
+    if period is None and years is None and months is None and days is None:
+        return dts
+
     if period:
-        dts = [copy.deepcopy(period)]
+        if isinstance(period, list):
+            dts = [copy.deepcopy(period)]
     else:
-        dts_ini = [f"{y}-{m}-{d} 00:00:00" for d in days for m in months for y in years]
-        dts_final = [dt.replace('00:00:00', '23:59:59') for dt in dts_ini]
+        # Checking input types and values
+        ye = mo = da = None
+        if years is not None:
+            ye = years
+            if not isinstance(years, list):
+                ye = list(years)
+        if months is not None:
+            mo = months
+            if not isinstance(months, list):
+                mo = list(months)
+        if days is not None:
+            da = days
+            if not isinstance(days, list):
+                da = list(days)
+    
+        # Processing dates...
+        if da and mo and ye:
+            dts_ini = [f"{y}-{m}-{d} 00:00:00" for d, m, y in zip(da, mo, ye)]
+            dts_final = [dt.replace('00:00:00', '23:59:59') for dt in dts_ini]
+        if (not da) and mo and ye:
+            dts_ini = [f"{y}-{int(m):0>2d}-01 00:00:00" for m, y in zip(mo, ye)]
+            month_days = [calendar.monthrange(int(y), int(m))[1] for m, y in zip(mo, ye)]
+            dts_final = ["{}-{:0>2d}-{:0>2d} 23:59:59".format(y, int(m), md) for y, m, md in zip(ye, mo, month_days)]
+        if  (not da) and (not mo) and ye:
+            dts_ini = [f"{y}-01-01 00:00:00" for y in ye]
+            dts_final = [f"{y}-12-31 23:59:59" for y in ye]
 
         dts = zip(dts_ini, dts_final)
 
     return dts
 
-def get_data(db_file, period, years, months, days, positions, filters):
-    """"""
+def get_data(db_file, period=None, years=None, months=None, \
+    days=None, positions=None, filters=None):
+    """Filter input data accesible by 'db_file' taken into account
+    values given by the rest of parameters.
+    
+    Args:
+        db_file (str): path to SQLite database file.
+        period (list): time intervals given by (data_ini, date_final)
+            data_ini and data_final are given by strings like 'YYYY-MM-DD hh:mm:ss'
+        years (list): integer values.
+        months (list): integer values in [1, 12].
+        days (list): integer values in [1, 31].
+        positions (list) integer values in [1, 10].
+        filters (list): string values allowed are ('B', 'V', 'R', 'I').
 
-    dts = time_intervals(period, years, months, days)
+    Returns:
+        (pandas.DataFrame): Returned keywords are
+            ('datetime_obs', 'is_moon', 'photo_night', 
+            'sky_bright', 'position', 'filter_name')
+    """
+
     conn = sqlite3.connect(db_file)
     c = conn.cursor()
 
-    keywords = ['datetime_obs', 'is_moon', 'photo_night', 'sky_bright', 'position', 'filter_name']
+    keywords = ['datetime_obs', 'is_moon', 'photo_night', \
+        'sky_bright', 'position', 'filter_name']
 
-    sql = f"SELECT datetime(datetime_obs, 'unixepoch') as datetime_obs, {','.join(keywords[1:])} FROM measurement WHERE "
+    sql = f"SELECT datetime(datetime_obs, 'unixepoch') as datetime_obs, \
+        {','.join(keywords[1:])} FROM measurement "
     wheres = []
     if positions:
-        wheres.append(f"position in ({', '.join(positions)})")
+        lpos = [f"position = '{pos}'" for pos in positions]
+        wheres.append(f"({' OR '.join(lpos)})")
     if filters:
-        wheres.append(f"filter_name in ('{', '.join(filters)}')")
-    if dts:
-        intervals = [f"datetime_obs BETWEEN strftime('%s', '{dti}') and strftime('%s', '{dtf}')" for dti, dtf in dts]
-        
+        lfilt = [f"filter_name = '{fi}'" for fi in filters]
+        wheres.append(f"({' OR '.join(lfilt)})")
+    intervals = []
+    for t_interval in time_intervals(period, years, months, days):
+        print(f"Time interval = {t_interval}")
+        intervals.append(f"(datetime_obs BETWEEN strftime('%s', '{t_interval[0]}') and strftime('%s', '{t_interval[1]}'))")
+    if intervals:
         wheres.append(f"({' OR '.join(intervals)})")
     
-    sql += ' AND '.join(wheres)
+    if wheres:
+        sql += " WHERE "
+        sql += ' AND '.join(wheres)
 
     print(f"sql = {sql}")
     c.execute(sql)
@@ -101,7 +172,8 @@ def plot_data(data, out_plot, title, field_group='category_night'):
     A bit longer description.
 
     Args:
-        data (pandas.dataframe): Fields are ['date', 'time', 'is_moon', 'photo_night', 'sky_bright', 'category_night'].
+        data (pandas.dataframe): Fields are 
+            ['date', 'time', 'is_moon', 'photo_night', 'sky_bright', 'category_night'].
         out_plot (str): Path for output plot.
         title (str): Title for output plot.
         field_group (str): Field used for grouping.
@@ -125,7 +197,7 @@ def plot_data(data, out_plot, title, field_group='category_night'):
     ax.xaxis.set_major_formatter(formatter)
     for name, group in groups:
         ax.plot(group.sky_bright, marker='o', linestyle='', ms=5, label=name)
-    ax.legend()
+    ax.legend(loc="lower left")
     ax.set_title(title)
     ax.set_ylim([17,23])
     ax.set_xlabel('Datetime')
@@ -144,16 +216,26 @@ def main():
     parser = argparse.ArgumentParser(prog='astmon.py',
                                      conflict_handler='resolve',
                                      description='''It plots data from database SQLite file. 
-                                     
-                                     - If period is given, 'years', 'months' and 'days' parameters are ignored.
+                                     - period: date_ini date_final as strings with format "YYYY-MM-DD hh:mm:ss"
+                                         If period is given, 'years', 'months' and 'days' parameters are ignored.
                                      - If 'filters' are empty, every filters are plotted.
                                      - If no 'positions' are given, all values are plotted.
                                      
-                                     Use example:
-                                     python astmon.py ''',
-                                     epilog='''If period is set, then 
-                                        "years", "months", "days" 
-                                     parameters are ignored.''')
+                                      ''',
+                                     epilog='''Use examples:
+                                     Query in one time period and B, V filters
+                                         python astmon.py --period '2020-03-01 00:00:00' '2020-04-15 23:59:59' --filters B V -v astmonDB.db
+
+                                     Query in one time period, filters B and V, and positions 3, 4 and 5 
+                                     python astmon.py --period '2020-03-01 00:00:00' '2020-04-15 23:59:59' --filters B V  --positions 3 4 5 -v astmonDB.db
+
+                                     Query for 2 full years, all filters and all positions
+                                     python astmon.py --years 2020 2021 -v astmonDB.db
+
+                                     Query for one month in two years, all filters and all positions
+                                     python astmon.py --years 2020 2021 --months 4 -v astmonDB.db
+          
+''')
     parser.add_argument('--version', action='version', version='%(prog)s 1.0')
     parser.add_argument("db_file", help="SQLite file database path")
     parser.add_argument("--output_plot_dir",
