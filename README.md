@@ -12,9 +12,9 @@ Use script create_database.py in this way
 
 It creates astmodDB.db database file in 'output_dir'. 
 
-    - If overwrite=True then database is dropped and created again. It is filled with data taken from '*.dat' files located in 'path_to_dat_files'.
+    * If overwrite=True then database is dropped and created again. It is filled with data taken from '*.dat' files located in 'path_to_dat_files'.
     
-    - If overwrite=False, only new data not stored previously is inserted in database.
+    * If overwrite=False, only new data not stored previously is inserted in database.
 
 ## 2. Querying and plotting filtered data
 
@@ -35,4 +35,5 @@ Probed cases of use:
     python astmon.py --years 2020 2021 -v astmonDB.db
 
 * Query for one month in two years, all filters and all positions
+
     python astmon.py --years 2020 2021 --months 4 -v astmonDB.db
